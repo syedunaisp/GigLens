@@ -32,17 +32,14 @@ export async function getVoiceData(phoneNumber: string): Promise<VoiceDataSummar
             return cached.summary;
         }
 
-        // The user model lacks a discrete phoneNumber field, so we use a deterministic email mapping
-        const mappedEmail = `${phoneNumber}@voice.giglens.com`;
-
-        // 1. Find or create the user
-        let user = await prisma.user.findUnique({ where: { email: mappedEmail } });
+        // 1. Find or create the user by true phone number
+        let user = await prisma.user.findUnique({ where: { phoneNumber } });
         
         if (!user) {
             console.log(`[voice-db] Creating new user record for ${phoneNumber}`);
             user = await prisma.user.create({
                 data: {
-                    email: mappedEmail,
+                    phoneNumber: phoneNumber,
                     name: `Caller ${phoneNumber.slice(-4)}`,
                     role: "gig_worker"
                 }
