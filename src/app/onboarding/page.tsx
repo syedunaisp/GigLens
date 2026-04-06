@@ -15,8 +15,10 @@ import { parseCsv } from "@/lib/csv";
 export default function OnboardingPage() {
     const { completeOnboarding } = useAuth();
     const [isAnalyzing, setIsAnalyzing] = useState(false);
+    const [phoneError, setPhoneError] = useState("");
 
     const [formData, setFormData] = useState({
+        phoneNumber: "",
         annualIncome: 300000,
         monthlyExpenses: 15000,
         debtAmount: 0,
@@ -27,7 +29,14 @@ export default function OnboardingPage() {
         ordersPerMonth: 120
     });
 
+    // E.164 validation: must start with + followed by 10-15 digits (e.g. +919030745240)
+    const isValidE164 = (phone: string) => /^\+[1-9]\d{9,14}$/.test(phone);
+
     const handleChange = (field: string, value: number) => {
+        setFormData(prev => ({ ...prev, [field]: value }));
+    };
+
+    const handleChangeString = (field: string, value: string) => {
         setFormData(prev => ({ ...prev, [field]: value }));
     };
 
@@ -45,15 +54,31 @@ export default function OnboardingPage() {
     };
 
     const handleSubmit = async () => {
+        // Validate phone number before proceeding
+        if (!formData.phoneNumber.trim()) {
+            setPhoneError("Phone number is required.");
+            return;
+        }
+        if (!isValidE164(formData.phoneNumber.trim())) {
+            setPhoneError("Enter a valid phone number in E.164 format (e.g. +919030745240).");
+            return;
+        }
+        setPhoneError("");
+
         setIsAnalyzing(true);
         // Simulate ML Analysis Delay
         await new Promise(resolve => setTimeout(resolve, 2500));
 
         completeOnboarding({
+            phoneNumber: formData.phoneNumber.trim(),
             annualIncome: formData.annualIncome,
             monthlyExpenses: formData.monthlyExpenses,
             debtAmount: formData.debtAmount,
-            savingsRate: formData.savingsRate
+            savingsRate: formData.savingsRate,
+            incentives: formData.incentives,
+            platformCommission: formData.platformCommission,
+            weeklyHours: formData.weeklyHours,
+            ordersPerMonth: formData.ordersPerMonth
         });
     };
 
@@ -100,6 +125,23 @@ export default function OnboardingPage() {
                         </CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-6">
+                        <div className="space-y-2">
+                            <Label>Phone Number <span className="text-red-500">*</span> <span className="text-xs text-muted-foreground">(E.164 format, e.g. +91...)</span></Label>
+                            <Input
+                                type="tel"
+                                placeholder="+919030745240"
+                                value={formData.phoneNumber}
+                                onChange={(e) => {
+                                    handleChangeString('phoneNumber', e.target.value);
+                                    if (phoneError) setPhoneError("");
+                                }}
+                                className={phoneError ? "border-red-500 focus-visible:ring-red-500" : ""}
+                                required
+                            />
+                            {phoneError && (
+                                <p className="text-sm text-red-500">{phoneError}</p>
+                            )}
+                        </div>
                         <div className="space-y-2">
                             <div className="flex justify-between">
                                 <Label>Annual Income Estimate</Label>

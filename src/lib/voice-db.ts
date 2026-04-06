@@ -19,12 +19,25 @@ export interface VoiceDataSummary {
 const CACHE_TTL_MS = 3 * 60 * 1000; // 3 minutes
 const dataCache = new Map<string, { summary: VoiceDataSummary; expiresAt: number }>();
 
+export function invalidateVoiceData(phoneNumber?: string) {
+    if (!phoneNumber) {
+        dataCache.clear();
+        return;
+    }
+
+    dataCache.delete(phoneNumber);
+}
+
 /**
  * Retrieves realistic dashboard tracking data for the phone number. 
  * Heavy queries are cached so conversational turns avoid cold-start timeouts.
  */
 export async function getVoiceData(phoneNumber: string): Promise<VoiceDataSummary | null> {
     try {
+        if (!phoneNumber || phoneNumber === 'unknown') {
+            return null;
+        }
+
         const now = Date.now();
         const cached = dataCache.get(phoneNumber);
         if (cached && cached.expiresAt > now) {
@@ -32,18 +45,17 @@ export async function getVoiceData(phoneNumber: string): Promise<VoiceDataSummar
             return cached.summary;
         }
 
-        // 1. Find or create the user by true phone number
-        let user = await prisma.user.findUnique({ where: { phoneNumber } });
-        
+        // 1. Find the onboarded user by real phone number
+        const user = await prisma.user.findUnique({ where: { phoneNumber } });
+
         if (!user) {
-            console.log(`[voice-db] Creating new user record for ${phoneNumber}`);
-            user = await prisma.user.create({
-                data: {
-                    phoneNumber: phoneNumber,
-                    name: `Caller ${phoneNumber.slice(-4)}`,
-                    role: "gig_worker"
-                }
-            });
+            console.log(`[voice-db] No user found for ${phoneNumber}`);
+            return null;
+        }
+
+        if (user.name?.startsWith('Caller ')) {
+            console.log(`[voice-db] Ignoring stale placeholder user for ${phoneNumber}`);
+            return null;
         }
 
         // 2. Fetch Latest Financial Snapshot
@@ -69,7 +81,7 @@ export async function getVoiceData(phoneNumber: string): Promise<VoiceDataSummar
         const expenses = snapshot?.expenses || 0;
 
         const summary: VoiceDataSummary = {
-            userName: user.name || `Caller`,
+            userName: user.name || 'User',
             phoneNumber: phoneNumber,
             monthlyRevenue: revenue,
             monthlyExpenses: expenses,

@@ -1,6 +1,7 @@
 "use client";
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { useUser } from '@clerk/nextjs';
 
 // --- Types ---
 
@@ -81,58 +82,32 @@ interface GigFinContextType {
 
 // --- Initial Data ---
 
-const INITIAL_TRANSACTIONS: Transaction[] = [
-    { id: '1', type: 'income', amount: 1200, category: 'Uber', date: new Date(Date.now() - 86400000 * 0).toISOString().split('T')[0], description: 'Daily Payout' },
-    { id: '2', type: 'expense', amount: 300, category: 'Fuel', date: new Date(Date.now() - 86400000 * 0).toISOString().split('T')[0], description: 'Petrol' },
-    { id: '3', type: 'income', amount: 950, category: 'Uber', date: new Date(Date.now() - 86400000 * 1).toISOString().split('T')[0], description: 'Daily Payout' },
-    { id: '4', type: 'income', amount: 1100, category: 'Uber', date: new Date(Date.now() - 86400000 * 2).toISOString().split('T')[0], description: 'Daily Payout' },
-    { id: '5', type: 'expense', amount: 150, category: 'Food', date: new Date(Date.now() - 86400000 * 2).toISOString().split('T')[0], description: 'Lunch' },
-    { id: '6', type: 'income', amount: 800, category: 'Uber', date: new Date(Date.now() - 86400000 * 3).toISOString().split('T')[0], description: 'Daily Payout' },
-    { id: '7', type: 'income', amount: 0, category: 'Uber', date: new Date(Date.now() - 86400000 * 4).toISOString().split('T')[0], description: 'Day Off' },
-    { id: '8', type: 'income', amount: 1300, category: 'Uber', date: new Date(Date.now() - 86400000 * 5).toISOString().split('T')[0], description: 'Daily Payout' },
-];
+const INITIAL_TRANSACTIONS: Transaction[] = [];
 
-const INITIAL_PROFILE: UserProfile = {
-    name: 'Raju Kumar',
-    age: 28,
-    gender: 'Male',
-    occupation: 'Swiggy Partner',
-    email: 'raju.kumar@example.com',
-    location: 'Hyderabad',
-    bankDetails: {
-        accountNo: 'XXXX-XXXX-8899',
-        ifsc: 'HDFC0001234',
-        bankName: 'HDFC Bank'
-    },
-    currentBalance: 4500,
-    goals: [
-        {
-            id: '1',
-            title: 'Emergency Fund',
-            targetAmount: 50000,
-            currentAmount: 15000,
-            deadline: '2024-12-31',
-            priority: 'High',
-            category: 'Emergency'
+function createInitialProfile(name?: string, email?: string): UserProfile {
+    return {
+        name: name || 'User',
+        age: 28,
+        gender: 'Prefer not to say',
+        occupation: 'Gig Worker',
+        email: email || '',
+        location: 'India',
+        bankDetails: {
+            accountNo: '',
+            ifsc: '',
+            bankName: ''
         },
-        {
-            id: '2',
-            title: 'New Bike Battery',
-            targetAmount: 8000,
-            currentAmount: 2000,
-            deadline: '2024-06-30',
-            priority: 'Medium',
-            category: 'Work'
-        }
-    ],
-    appStreak: 12,
-    theme: 'light',
-    annualIncome: 300000,
-    monthlyExpenses: 15000,
-    gigCreditScore: 650, // Default starting score
-    approvalProbability: 0.5,
-    maxLoanAmount: 10000
-};
+        currentBalance: 0,
+        goals: [],
+        appStreak: 0,
+        theme: 'light',
+        annualIncome: 0,
+        monthlyExpenses: 0,
+        gigCreditScore: 0,
+        approvalProbability: 0,
+        maxLoanAmount: 0
+    };
+}
 
 const INITIAL_CONFIG: AppConfig = {
     fuelPrice: 102,
@@ -144,15 +119,34 @@ const INITIAL_CONFIG: AppConfig = {
 const GigFinContext = createContext<GigFinContextType | undefined>(undefined);
 
 export function GigFinProvider({ children }: { children: ReactNode }) {
+    const { user: clerkUser, isLoaded: isClerkLoaded, isSignedIn } = useUser();
     const [transactions, setTransactions] = useState<Transaction[]>(INITIAL_TRANSACTIONS);
     const [loans, setLoans] = useState<Loan[]>([]);
-    const [userProfile, setUserProfile] = useState<UserProfile>(INITIAL_PROFILE);
+    const [userProfile, setUserProfile] = useState<UserProfile>(createInitialProfile());
     const [appConfig, setAppConfig] = useState<AppConfig>(INITIAL_CONFIG);
     const [isLoaded, setIsLoaded] = useState(false);
 
-    // Load from LocalStorage
+    // Load per-user state from LocalStorage
     useEffect(() => {
-        const savedData = localStorage.getItem('gigfin_data');
+        if (!isClerkLoaded) return;
+
+        const baseProfile = createInitialProfile(
+            clerkUser?.fullName || clerkUser?.username || 'User',
+            clerkUser?.primaryEmailAddress?.emailAddress || ''
+        );
+
+        if (!isSignedIn || !clerkUser) {
+            setTransactions(INITIAL_TRANSACTIONS);
+            setLoans([]);
+            setUserProfile(baseProfile);
+            setAppConfig(INITIAL_CONFIG);
+            setIsLoaded(true);
+            return;
+        }
+
+        const storageKey = `gigfin_data_${clerkUser.id}`;
+        const savedData = localStorage.getItem(storageKey);
+
         if (savedData) {
             try {
                 const parsed = JSON.parse(savedData) as {
@@ -161,29 +155,38 @@ export function GigFinProvider({ children }: { children: ReactNode }) {
                     userProfile?: UserProfile;
                     appConfig?: AppConfig;
                 };
-                if (parsed.transactions) setTransactions(parsed.transactions);
-                if (parsed.loans) setLoans(parsed.loans);
-                if (parsed.userProfile) setUserProfile(prev => ({ ...prev, ...parsed.userProfile }));
-                if (parsed.appConfig) setAppConfig(parsed.appConfig);
+                setTransactions(parsed.transactions || INITIAL_TRANSACTIONS);
+                setLoans(parsed.loans || []);
+                setUserProfile({ ...baseProfile, ...parsed.userProfile });
+                setAppConfig(parsed.appConfig || INITIAL_CONFIG);
             } catch (e) {
-                console.error("Failed to load data", e);
+                console.error('Failed to load data', e);
+                setTransactions(INITIAL_TRANSACTIONS);
+                setLoans([]);
+                setUserProfile(baseProfile);
+                setAppConfig(INITIAL_CONFIG);
             }
+        } else {
+            setTransactions(INITIAL_TRANSACTIONS);
+            setLoans([]);
+            setUserProfile(baseProfile);
+            setAppConfig(INITIAL_CONFIG);
         }
-        setIsLoaded(true);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
 
-    // Save to LocalStorage
+        setIsLoaded(true);
+    }, [isClerkLoaded, isSignedIn, clerkUser]);
+
+    // Save to user-scoped LocalStorage
     useEffect(() => {
-        if (isLoaded) {
-            localStorage.setItem('gigfin_data', JSON.stringify({
-                transactions,
-                loans,
-                userProfile,
-                appConfig
-            }));
-        }
-    }, [transactions, loans, userProfile, appConfig, isLoaded]);
+        if (!isLoaded || !clerkUser) return;
+
+        localStorage.setItem(`gigfin_data_${clerkUser.id}`, JSON.stringify({
+            transactions,
+            loans,
+            userProfile,
+            appConfig
+        }));
+    }, [transactions, loans, userProfile, appConfig, isLoaded, clerkUser]);
 
     // Theme Effect
     useEffect(() => {

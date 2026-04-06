@@ -3,11 +3,20 @@
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 
-import { Bell, Menu, User as UserIcon, LayoutDashboard, Briefcase, Calculator, Target, HelpCircle, LogOut, Activity } from "lucide-react";
+import { Bell, Menu, User as UserIcon, LayoutDashboard, Briefcase, Target, LogOut, Activity, CreditCard, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/context/AuthContext";
-import { Sheet, SheetContent, SheetTrigger, SheetClose } from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuLabel,
+    DropdownMenuSeparator,
+    DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Badge } from "@/components/ui/badge";
 
 export function Navbar() {
     const pathname = usePathname();
@@ -27,28 +36,22 @@ export function Navbar() {
             color: "text-violet-500",
         },
         {
-            label: "Simulator",
-            icon: Calculator,
-            href: "/simulator",
-            color: "text-pink-700",
+            label: "Gig-Tabby",
+            icon: CreditCard,
+            href: "/tabby",
+            color: "text-purple-500",
+        },
+        {
+            label: "Schemes",
+            icon: ShieldCheck,
+            href: "/schemes",
+            color: "text-green-600",
         },
         {
             label: "Goals",
             icon: Target,
             href: "/goals",
             color: "text-orange-700",
-        },
-        {
-            label: "Profile",
-            icon: UserIcon,
-            href: "/profile",
-            color: "text-gray-500",
-        },
-        {
-            label: "Help",
-            icon: HelpCircle,
-            href: "/help",
-            color: "text-green-600",
         },
     ];
 
@@ -128,10 +131,37 @@ export function Navbar() {
             <div className="flex items-center gap-4">
                 {isAuthenticated ? (
                     <>
-                        <Button variant="ghost" size="icon" className="relative">
-                            <Bell className="h-5 w-5 text-muted-foreground" />
-                            <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-destructive" />
-                        </Button>
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="icon" className="relative">
+                                    <Bell className="h-5 w-5 text-muted-foreground" />
+                                    <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-destructive animate-pulse" />
+                                </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-[300px]">
+                                <DropdownMenuLabel>Notifications</DropdownMenuLabel>
+                                <DropdownMenuSeparator />
+                                <div className="max-h-[300px] overflow-y-auto">
+                                    <DropdownMenuItem className="flex flex-col items-start gap-1 p-3 focus:bg-muted cursor-pointer">
+                                        <div className="flex items-center gap-2 w-full">
+                                            <Badge variant="outline" className="text-green-600 border-green-200 bg-green-50">New Scheme</Badge>
+                                            <span className="text-xs text-muted-foreground ml-auto">Just now</span>
+                                        </div>
+                                        <p className="font-medium text-sm">Ayushman Bharat Eligibility</p>
+                                        <p className="text-xs text-muted-foreground">You are eligible for ₹5 Lakh health cover. Register now via e-Shram.</p>
+                                    </DropdownMenuItem>
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem className="flex flex-col items-start gap-1 p-3 focus:bg-muted cursor-pointer">
+                                        <div className="flex items-center gap-2 w-full">
+                                            <Badge variant="outline" className="text-blue-600 border-blue-200 bg-blue-50">Insurance</Badge>
+                                            <span className="text-xs text-muted-foreground ml-auto">2h ago</span>
+                                        </div>
+                                        <p className="font-medium text-sm">Pradhan Mantri Suraksha Bima</p>
+                                        <p className="text-xs text-muted-foreground">Secure your family with ₹2 Lakh accident cover for just ₹20/year.</p>
+                                    </DropdownMenuItem>
+                                </div>
+                            </DropdownMenuContent>
+                        </DropdownMenu>
 
                         <Link href="/profile">
                             <Button variant="ghost" size="icon" className="rounded-full">

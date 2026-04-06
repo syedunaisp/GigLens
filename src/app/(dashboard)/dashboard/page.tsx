@@ -13,6 +13,7 @@ import { DollarSign, CreditCard, Droplets, Loader2 } from "lucide-react";
 
 const AdvancedFeaturesGrid = dynamic(() => import("@/components/dashboard/AdvancedFeaturesGrid").then(mod => mod.AdvancedFeaturesGrid), { ssr: false });
 const QuickAddTransaction = dynamic(() => import("@/components/dashboard/QuickAddTransaction").then(mod => mod.QuickAddTransaction), { ssr: false });
+import { SchemesPopup } from "@/components/dashboard/SchemesPopup";
 
 export default function DashboardPage() {
     const { transactions, userProfile, calculateKarmaScore } = useGigFin();
@@ -46,6 +47,7 @@ export default function DashboardPage() {
 
     return (
         <div className="space-y-6">
+            <SchemesPopup />
             <div className="flex items-center justify-between space-y-2">
                 <h2 className="text-3xl font-bold tracking-tight">{t.dashboard}</h2>
                 <div className="flex items-center space-x-2">

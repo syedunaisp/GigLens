@@ -12,10 +12,15 @@ interface User {
 }
 
 interface FinancialData {
+    phoneNumber: string;
     annualIncome: number;
     monthlyExpenses: number;
     debtAmount: number;
     savingsRate: number; // as percentage 0-100
+    incentives: number;
+    platformCommission: number;
+    weeklyHours: number;
+    ordersPerMonth: number;
 }
 
 interface AuthContextType {
@@ -36,7 +41,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const router = useRouter();
     const pathname = usePathname();
-    const { updateUserProfile, initializeUserTransactions } = useGigFin();
+    const { updateUserProfile, initializeUserTransactions, updateAppConfig } = useGigFin();
 
     // Derived user object to match interface
     const user: User | null = clerkUser ? {
@@ -94,11 +99,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             // Prepare data for ML API
             const predictionData = {
                 annual_income: data.annualIncome,
-                incentives: 2000,
-                platform_commission: 20,
+                incentives: data.incentives,
+                platform_commission: data.platformCommission,
                 total_expenses: data.monthlyExpenses,
-                weekly_work_hours: 40,
-                orders_per_month: 120,
+                weekly_work_hours: data.weeklyHours,
+                orders_per_month: data.ordersPerMonth,
                 debt_amount: data.debtAmount,
                 savings_rate: data.savingsRate
             };
@@ -145,12 +150,52 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 predictions.max_loan_amount = Math.round((data.annualIncome / 12) * 2);
             }
 
+            // Sync User to Prisma Backend Route — phoneNumber is now mandatory
+            try {
+                const currentBalance = Math.max(Math.round(data.annualIncome / 12) - data.monthlyExpenses, 0);
+
+                const syncRes = await fetch('/api/user/sync', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        phoneNumber: data.phoneNumber,
+                        annualIncome: data.annualIncome,
+                        monthlyExpenses: data.monthlyExpenses,
+                        debtAmount: data.debtAmount,
+                        savingsRate: data.savingsRate,
+                        incentives: data.incentives,
+                        platformCommission: data.platformCommission,
+                        weeklyHours: data.weeklyHours,
+                        ordersPerMonth: data.ordersPerMonth,
+                        gigCreditScore: predictions.gig_credit_score,
+                        approvalProbability: predictions.approval_probability,
+                        maxLoanAmount: predictions.max_loan_amount,
+                        currentBalance
+                    })
+                });
+
+                if (!syncRes.ok) {
+                    const syncData = await syncRes.json().catch(() => ({}));
+                    console.error("User sync failed:", syncRes.status, syncData);
+                    // Don't silently continue — the phone number must be in the DB
+                    // for "Talk to AI Assistant" to work later
+                    throw new Error(syncData.message || "Failed to save your phone number. Please try again.");
+                }
+            } catch (syncError) {
+                // Re-throw so the outer catch block shows the alert
+                if (syncError instanceof Error) throw syncError;
+                console.error("Failed to sync user to database:", syncError);
+                throw new Error("Failed to save your profile. Please check your connection and try again.");
+            }
+
             // Update Global Context with Predicted values
             updateUserProfile({
                 name: user?.name || 'User',
                 currentBalance: Math.round(data.annualIncome / 12) - data.monthlyExpenses,
                 annualIncome: data.annualIncome,
                 monthlyExpenses: data.monthlyExpenses,
+                occupation: 'Gig Worker',
+                email: user?.email || '',
                 goals: [{
                     id: 'init-1',
                     title: 'Emergency Fund',
@@ -169,6 +214,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
             // Generate Synthetic Transactions based on Input
             initializeUserTransactions(data.annualIncome, data.monthlyExpenses);
+            updateAppConfig({
+                dailyTarget: Math.max(Math.round((data.annualIncome / 12) / 25), 100)
+            });
 
             // Persist Onboarding Status using Clerk ID if available
             if (clerkUser) {

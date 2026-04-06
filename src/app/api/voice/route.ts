@@ -23,7 +23,7 @@ function buildPersonalizedPrompt(dashboard: VoiceDataSummary | null, detectedUpd
     let dashboardDataStr = "Dashboard Data is currently unavailable. Ask the user to share their numbers.";
     if (dashboard) {
         dashboardDataStr = `
-- System Name: ${dashboard.userName} (Phone: ${dashboard.phoneNumber})
+- User Name: ${dashboard.userName}
 - Monthly Income: ₹${dashboard.monthlyRevenue.toLocaleString('en-IN')}
 - Expenses: ₹${dashboard.monthlyExpenses.toLocaleString('en-IN')}
 - Balance: ₹${dashboard.balance.toLocaleString('en-IN')}
@@ -85,6 +85,28 @@ function conversationalTwiml(message: string): string {
     </Gather>
     <Say voice="alice">I didn't hear anything. Goodbye.</Say>
 </Response>`;
+}
+
+function normalizePhone(value: string | null | undefined): string | null {
+    if (!value) return null;
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    return trimmed.startsWith('+') ? trimmed : `+${trimmed.replace(/\D/g, '')}`;
+}
+
+function resolveParticipantPhone(formData: Record<string, string>): string {
+    // For outbound calls initiated by Twilio:
+    // - From = Twilio number
+    // - To / Called = end user's phone number
+    // For inbound calls, To is our Twilio number and From is the user.
+    // Our current product flow is outbound, so prefer To/Called first.
+    return (
+        normalizePhone(formData['To']) ||
+        normalizePhone(formData['Called']) ||
+        normalizePhone(formData['Caller']) ||
+        normalizePhone(formData['From']) ||
+        'unknown'
+    );
 }
 
 async function parseTwilioFormData(request: NextRequest): Promise<Record<string, string>> {
@@ -153,21 +175,21 @@ export async function POST(request: NextRequest) {
         // 1. Parse Twilio form data
         const formData = await parseTwilioFormData(request);
         const speechResult = formData['SpeechResult'] || null;
-        const callerPhone = formData['From'] || formData['Caller'] || 'unknown';
+        const participantPhone = resolveParticipantPhone(formData);
         const callSid = formData['CallSid'] || 'unknown';
 
-        console.log(`[/api/voice] CallSid=${callSid}, From=${callerPhone}, Speech=${speechResult ? `"${speechResult}"` : 'null'}`);
+        console.log(`[/api/voice] CallSid=${callSid}, To=${formData['To'] || 'n/a'}, From=${formData['From'] || 'n/a'}, ResolvedUser=${participantPhone}, Speech=${speechResult ? `"${speechResult}"` : 'null'}`);
 
         // 2. Fetch Real Dashboard Data (Uses Cached DB Layer)
-        const dashboardData = await getVoiceData(callerPhone);
+        const dashboardData = participantPhone === 'unknown' ? null : await getVoiceData(participantPhone);
 
         // 3. Initial call — no speech yet
         if (!speechResult) {
             let greeting = WELCOME_MESSAGE;
-            if (dashboardData && dashboardData.userName && dashboardData.userName !== 'Caller') {
+            if (dashboardData && dashboardData.userName && dashboardData.userName !== 'User') {
                 greeting = `Hello ${dashboardData.userName}! Welcome back to GigLens. I have your dashboard metrics pulled up. What would you like to discuss today?`;
             }
-            console.log(`[/api/voice] Initial call for ${callerPhone}`);
+            console.log(`[/api/voice] Initial call for ${participantPhone}`);
             return twimlResponse(conversationalTwiml(greeting));
         }
 
@@ -180,11 +202,11 @@ export async function POST(request: NextRequest) {
         const { detected } = extractProfileData(speechResult);
         
         // 6. Store user message in conversation memory
-        addMessage(callerPhone, 'user', speechResult);
+        addMessage(participantPhone, 'user', speechResult);
 
         // 7. Build personalized AI prompt using the DASHBOARD DATA as Source of Truth
         const systemPrompt = buildPersonalizedPrompt(dashboardData, detected);
-        const history = getHistory(callerPhone);
+        const history = getHistory(participantPhone);
 
         // 8. Get AI response with full context
         console.log(`[/api/voice] Generating AI response for: "${speechResult}"`);
@@ -192,14 +214,14 @@ export async function POST(request: NextRequest) {
 
         if (aiResponse) {
             // Store assistant response in memory
-            addMessage(callerPhone, 'assistant', aiResponse);
+            addMessage(participantPhone, 'assistant', aiResponse);
             console.log(`[/api/voice] AI response: "${aiResponse}"`);
             return twimlResponse(conversationalTwiml(aiResponse));
         }
 
         // 9. AI failed — graceful fallback
         const fallbackMsg = `I heard you, but I'm having trouble processing that right now. Could you try asking again?`;
-        addMessage(callerPhone, 'assistant', fallbackMsg);
+        addMessage(participantPhone, 'assistant', fallbackMsg);
         return twimlResponse(conversationalTwiml(fallbackMsg));
 
     } catch (err) {

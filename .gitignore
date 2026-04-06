@@ -31,3 +31,6 @@ build/
 backend/random_forest_model1.pkl # LARGE FILE - Do not commit ML models directly
 backend/random_forest.pkl
 *.pkl
+
+# TypeScript
+*.tsbuildinfo

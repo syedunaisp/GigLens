@@ -39,7 +39,7 @@ export default function JobsPage() {
             </div>
 
             <Tabs defaultValue="feed" className="w-full" onValueChange={setActiveTab}>
-                <div className="sticky top-0 z-10 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 py-2">
+                <div className="py-2">
                     <TabsList className="grid w-full grid-cols-2">
                         <TabsTrigger value="feed" className="flex items-center gap-2">
                             <Briefcase className="h-4 w-4" />
